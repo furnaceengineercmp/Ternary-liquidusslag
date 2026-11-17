@@ -56,7 +56,12 @@ textarea{width:100%;min-height:56px;font:12px/1.4 Consolas,monospace;border:1px 
 <div class="tb" id="pre"></div>
 <label>Manual (°C): <input type="number" id="tman" min="1100" max="2000" step="1"></label>
 <input type="range" id="tsl" min="1100" max="2000" step="10" style="width:100%" aria-label="Geser suhu operasi"></div>
-<div class="pn"><h2>Ekspor</h2><div class="tb"><button class="pri" id="bpng">PNG</button><button class="pri" id="bpdf">PDF</button><button class="pri" id="bxls">Excel</button></div></div>
+<div class="pn"><h2>Ekspor</h2>
+<div class="src" style="margin-bottom:4px">Isi file PNG:</div>
+<label style="display:block"><input type="checkbox" id="xt" checked> Diagram terner</label>
+<label style="display:block"><input type="checkbox" id="xc" checked> Grafik liquidus vs Si/Mg (beserta legenda)</label>
+<label style="display:block"><input type="checkbox" id="xr" checked> Panel hasil analisis</label>
+<div class="tb"><button class="pri" id="bpng">PNG</button><button class="pri" id="bpdf">PDF</button><button class="pri" id="bxls">Excel</button></div></div>
 </div>
 <div>
 <div class="pn"><h2 id="ttl">Diagram terner</h2>
@@ -289,10 +294,31 @@ function buildLegend(){
 const setAll=on=>{st.vis={};[...Object.keys(CHC),'slag','r0','r1','r2'].forEach(k=>st.vis[k]=on);save();buildLegend();drawChart();};
 $('vall').onclick=()=>setAll(true);$('vnone').onclick=()=>setAll(false);
 buildLegend();
-$('bpng2').onclick=()=>{const a=document.createElement('a');a.href=$('cv2').toDataURL('image/png');a.download='liquidus_vs_SiMg.png';a.click();};
+$('bpng2').onclick=()=>dl(composePNG({chart:true}),'liquidus_vs_SiMg.png');
 /* ===== EKSPOR ===== */
 const fname=()=>'slag_'+st.T+'C';
-$('bpng').onclick=()=>{const a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download=fname()+'.png';a.click();};
+const dl=(c,n)=>{const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=n;a.click();};
+function legendItems(){return [...Object.keys(CHC).filter(vis).map(k=>[CHC[k],'FeO '+k+'%']),...(vis('slag')?[['#d6401f','FeO slag Anda']]:[]),...REF.map((q,i)=>[q.c,q.n,i]).filter(q=>vis('r'+q[2])).map(q=>[q[0],q[1]])];}
+function composePNG(o){
+  const Wd=760,P=14,blocks=[],mc=document.createElement('canvas').getContext('2d');
+  const wrap=(txt,font,mw)=>{mc.font=font;let l='';const out=[];txt.split(' ').forEach(x=>{const tt=l?l+' '+x:x;if(mc.measureText(tt).width>mw&&l){out.push(l);l=x;}else l=tt;});if(l)out.push(l);return out;};
+  if(o.ter)blocks.push({k:'c',c:cv,w:640,h:600});
+  if(o.chart){blocks.push({k:'c',c:$('cv2'),w:760,h:470});
+    mc.font='12px Segoe UI,Arial';let x=P,rows=1;
+    const pos=legendItems().map(([c,n])=>{const w=mc.measureText(n).width+30;if(x+w>Wd-P){x=P;rows++;}const q=[x,rows-1,c,n];x+=w;return q;});
+    blocks.push({k:'l',pos,h:rows*20+8});}
+  if(o.res){const ls=[];[...$('res').children].forEach(e=>{const b=e.tagName==='H2',s=e.classList.contains('src'),font=(b?'bold 16px':s?'12px':'14px')+' Segoe UI,Arial';wrap(e.textContent.trim(),font,Wd-2*P).forEach(t=>ls.push({t,font,lh:b?26:s?16:20,col:s?'#5d6f7a':'#17262f'}));});
+    blocks.push({k:'t',ls,h:ls.reduce((a,l)=>a+l.lh,0)+10});}
+  if(!blocks.length)return null;
+  const cx=document.createElement('canvas');cx.width=Wd;cx.height=blocks.reduce((a,b)=>a+b.h,0)+P*2;
+  const g=cx.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,Wd,cx.height);let y=P;
+  blocks.forEach(b=>{
+    if(b.k==='c')g.drawImage(b.c,(Wd-b.w)/2,y,b.w,b.h);
+    else if(b.k==='l'){g.font='12px Segoe UI,Arial';g.textAlign='left';b.pos.forEach(([x,r,c,n])=>{g.fillStyle=c;g.fillRect(x,y+r*20+4,14,12);g.fillStyle='#17262f';g.fillText(n,x+19,y+r*20+14);});}
+    else{let yy=y+4;g.textAlign='left';b.ls.forEach(l=>{g.font=l.font;g.fillStyle=l.col;yy+=l.lh;g.fillText(l.t,P,yy-5);});}
+    y+=b.h;});
+  return cx;}
+$('bpng').onclick=()=>{const c=composePNG({ter:$('xt').checked,chart:$('xc').checked,res:$('xr').checked});if(!c){alert('Pilih minimal satu bagian untuk PNG.');return;}dl(c,fname()+'.png');};
 $('bpdf').onclick=()=>{if(!LAST||!window.jspdf){alert('Data belum lengkap atau pustaka PDF belum termuat (butuh internet).');return;}
   const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4'}),{t,a,od}=LAST;
   doc.setFontSize(14);doc.text('Ferronickel Slag Phase Analyzer - Laporan',14,14);
