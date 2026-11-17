@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ferronickel Slag Phase Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#eef1f3;--pn:#fff;--ink:#17262f;--mut:#5d6f7a;--ln:#d3dbe0;--ac:#245a78;--hot:#d6401f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI","Helvetica Neue",Arial,sans-serif}
+header{background:#17262f;color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:20px;font-weight:600}
+header p{margin:2px 0 0;color:#a9bcc7;font-size:13px}
+.warn{background:#fff4d6;border-left:4px solid #d9a400;margin:12px 20px 0;padding:8px 12px;font-size:13px}
+main{display:grid;grid-template-columns:330px 1fr;gap:14px;padding:14px 20px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.pn{background:var(--pn);border:1px solid var(--ln);border-radius:6px;padding:14px;margin-bottom:14px}
+.pn h2{margin:0 0 8px;font-size:15px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{padding:3px 4px;text-align:left;border-bottom:1px solid var(--ln)}
+input[type=number]{width:84px;padding:3px 5px;border:1px solid var(--ln);border-radius:4px;font:inherit;text-align:right}
+td.n{text-align:right}
+.tb{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+button{font:inherit;border:1px solid var(--ac);background:#fff;color:var(--ac);border-radius:4px;padding:5px 10px;cursor:pointer}
+button.on,button.pri{background:var(--ac);color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid #f2a900;outline-offset:1px}
+.lg{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;margin-top:6px}
+.lg i{display:inline-block;width:14px;height:14px;vertical-align:-2px;margin-right:4px;border:1px solid #0004}
+canvas{width:100%;max-width:640px;height:auto;display:block;margin:auto;border:1px solid var(--ln)}
+#tip{font-size:13px;color:var(--mut);min-height:20px;text-align:center}
+.big{font-size:18px;font-weight:600}
+.res p{margin:4px 0}
+.k{color:var(--mut)}
+.ok{color:#1d7a3a}.bad{color:var(--hot)}
+.src{font-size:12px;color:var(--mut)}
+textarea{width:100%;min-height:56px;font:12px/1.4 Consolas,monospace;border:1px dashed var(--ac);border-radius:4px;padding:6px;margin-bottom:6px}
+.pi{font-size:12px;color:var(--mut);margin:6px 0}
+</style>
+</head>
+<body>
+<header><h1>Ferronickel Slag Phase Analyzer</h1><p>Sistem MgO–FeO–SiO₂ · 1100–2000 °C · tekanan 1 atm · basis wt% · Fe²⁺, atmosfer reduktif</p></header>
+<div class="warn"><b>Model terkalibrasi ke data FactSage Anda, bukan hasil FactSage langsung.</b> Liquidus olivin di-fit ke 57 titik (Facsage_cal.xlsx dan kurva liquidus vs S/M pada FeO 0–30% tanpa Al₂O₃; selisih rata-rata ≈4 °C). Batas olivin/piroksen/silika mengikuti kink dan minimum kurva tersebut; batas monoksida/olivin dari gambar proyeksi FactSage (digitisasi ±1–2 wt%). Di antara garis data nilai adalah interpolasi. Al₂O₃ sekitar 5% pada slag Anda dapat menurunkan liquidus sekitar 10–50 °C di sisi olivin (selisih data Excel ber-Al₂O₃ vs tanpa Al₂O₃); CaO, MnO, Cr belum dihitung.</div>
+<main>
+<div>
+<div class="pn"><h2>Komposisi slag (wt%)</h2>
+<textarea id="paste" placeholder="Tempel dari Excel di sini (Ctrl+V): 1 baris (Date … Basicity) atau beberapa baris sekaligus. Beberapa baris otomatis dirata-rata per komponen." aria-label="Area tempel dari Excel"></textarea>
+<div class="pi" id="pinfo">Tempel juga bisa langsung di kolom angka di bawah. Satu kolom angka vertikal akan mengisi ke bawah mulai dari kolom yang aktif.</div>
+<table id="inp"></table>
+<p class="src">Fe elemental sudah terwakili oleh FeO aktual dan tidak dihitung ganda. FeO aktual otomatis dihitung dari Fe elemental (FeO = Fe × 1,2865) setiap Fe diubah; FeO bisa ditimpa manual. Input terner: MgO, FeO aktual, SiO₂.</p>
+<table id="norm"></table>
+<div class="pi" id="tot" role="status"></div>
+<div class="tb"><button id="clr">Hapus semua angka</button><button id="rst">Kembalikan default</button></div></div>
+<div class="pn"><h2>Suhu operasi</h2>
+<div class="tb" id="pre"></div>
+<label>Manual (°C): <input type="number" id="tman" min="1100" max="2000" step="1"></label>
+<input type="range" id="tsl" min="1100" max="2000" step="10" style="width:100%" aria-label="Geser suhu operasi"></div>
+<div class="pn"><h2>Ekspor</h2><div class="tb"><button class="pri" id="bpng">PNG</button><button class="pri" id="bpdf">PDF</button><button class="pri" id="bxls">Excel</button></div></div>
+</div>
+<div>
+<div class="pn"><h2 id="ttl">Diagram terner</h2>
+<canvas id="cv" width="640" height="600"></canvas>
+<div id="tip">Arahkan kursor ke diagram untuk melihat komposisi dan fasa.</div>
+<div class="lg" id="lg"></div>
+<p class="src">Garis tebal hitam: liquidus = suhu terpilih (di dalam area cair penuh). Garis tipis: kontur liquidus tiap 100 °C (berlabel). Garis abu-abu: batas medan fasa primer.</p></div>
+<div class="pn"><h2>Grafik temperatur leleh (liquidus) vs SiO₂/MgO</h2>
+<canvas id="cv2" width="760" height="470"></canvas>
+<div class="tb"><button id="vall">Tampilkan semua</button><button id="vnone">Sembunyikan semua</button></div>
+<div class="lg" id="lg2"></div>
+<p class="src">Centang kurva yang ingin ditampilkan (pilihan tersimpan). Garis berwarna: liquidus model pada FeO 0–30%. Garis merah putus-putus: FeO slag Anda; titik merah: slag Anda. Penanda: data langsung dari Facsage_cal.xlsx. Garis biru putus-putus: suhu operasi terpilih. Di bawah liquidus slag mulai mengkristal.</p>
+<div class="tb"><button class="pri" id="bpng2">PNG grafik</button></div></div>
+<div class="pn res" id="res"></div>
+<div class="pn"><h2>Sensitivitas komposisi terhadap liquidus</h2><table id="sens"></table>
+<p class="src">Baris 1–3: komponen ditambah 1 wt% lalu komposisi dinormalisasi ulang, sehingga dua komponen lain ikut terencerkan. Baris 4–7: total tetap (komponen saling menggantikan) sehingga efek tiap komponen terpisah. Selisih kecil (kurang dari ±10 °C) masih dalam ketidakpastian model.</p></div>
+<div class="pn"><h2>Perbandingan suhu operasi</h2><table id="scn"></table></div>
+</div>
+</main>
+<script>
+/* ===== MODEL ILUSTRATIF (semi-kuantitatif) ===== */
+const PH={mw:{n:'Magnesiowüstit',c:'#e6a06c'},ol:{n:'Olivin',c:'#79c27a'},px:{n:'Piroksen',c:'#86aee0'},si:{n:'Silika (tridimit/kristobalit)',c:'#d8c071'}};
+const LIQC='#f1f5f9',SOL=1180;
+/* Kalibrasi ternary MgO-FeO-SiO2 (tanpa Al2O3): Facsage_cal.xlsx + grafik liquidus vs S/M pada FeO 0-30% (digitisasi), batas monoksida/olivin dari gambar proyeksi FactSage. Koordinat (f,s) = fraksi massa FeO dan SiO2. */
+const PL=(t,x)=>{if(x<=t[0][0])return t[0][1];for(let i=1;i<t.length;i++)if(x<=t[i][0]){const a=t[i-1],b=t[i];return a[1]+(b[1]-a[1])*(x-a[0])/(b[0]-a[0]);}return t[t.length-1][1];};
+const B_LOW=[[0,.41],[.2,.345],[.4,.288],[.6,.222],[.7,.21],[.775,.225],[1,.225]];   // batas monoksida/olivin (digitisasi gambar)
+const B_OL=[[0,.605],[.1,.574],[.2,.545],[.257,.524],[.6,.395],[1,.395]];   // batas olivin/piroksen (kink kurva & data Excel)
+const B_SI=[[0,.636],[.6,.396],[1,.396]];                                  // batas piroksen/silika = posisi minimum kurva liquidus
+const T_EU=[[0,1548],[.05,1527],[.1,1507],[.15,1485],[.2,1458],[.25,1437],[.3,1412],[.45,1290],[.6,1180],[1,1180]]; // liquidus minimum tiap %FeO (grafik Anda)
+const QC=[881.0,5408.8,1231.7,-7133.0,-4205.8,-1295.4];                    // fit kuadrat liquidus olivin: RMS ~4 C terhadap 57 titik data
+const Tol=(f,s)=>QC[0]+QC[1]*s+QC[2]*f+QC[3]*s*s+QC[4]*s*f+QC[5]*f*f;
+const Tm0=x=>1377+1475*Math.pow(Math.max(x,0),1.3);
+function liqT(m,f,s){
+  const F=f/100,S=s/100,sL=PL(B_LOW,F),s2=PL(B_OL,F),s1=PL(B_SI,F),Te=PL(T_EU,F);
+  const ol=Tol(F,S);
+  const To2=Tol(F,s2),kp=(To2-Te)/Math.max(s1-s2,0.004),px=To2-kp*(S-s2);
+  const A=2150,pp=0.9,d=S-s1;
+  const si=d>=0?Te+A*Math.pow(d,pp):Te+3000*d;
+  const x=(1-F-S)/Math.max(1-S,1e-9),xb=(1-F-sL)/Math.max(1-sL,1e-9);
+  const kmw=F>=0.775?871:(Tm0(xb)-Tol(F,sL))/Math.max(sL,0.05);
+  const mw=Tm0(x)-kmw*S;
+  return {mw,ol,px,si,sL,s2,s1};
+}
+function primary(m,f,s){const t=liqT(m,f,s),S=s/100;let ph,sec;
+  if(S<t.sL){ph='mw';sec='ol';}
+  else if(S<t.s2){ph='ol';sec=(S-t.sL<t.s2-S)?'mw':'px';}
+  else if(S<t.s1){ph='px';sec=(S-t.s2<t.s1-S)?'ol':'si';}
+  else{ph='si';sec='px';}
+  return {ph,sec,TL:t[ph],t};}
+function analyze(m,f,s,T){
+  const p=primary(m,f,s),TL=p.TL,sec=p.sec;let set=[];
+  if(T<TL){set.push(p.ph);if(T<p.t[sec])set.push(sec);}
+  let fs=T>=TL?0:Math.min(0.98,Math.pow(Math.min(1,(TL-T)/(TL-SOL)),0.7));
+  let a=T>=TL?'Cair penuh':(T<SOL?'Padat (hampir penuh): '+set.map(k=>PH[k].n).join(' + '):'Cair + '+set.map(k=>PH[k].n).join(' + '));
+  let olf=set.includes('ol')?fs*(set.length>1?0.5:1):0;
+  return {TL,primary:p.ph,sec,set,fs,fl:1-fs,asm:a,olf,sup:T-TL};
+}
+function olivineDist(m,f,s){
+  if(primary(m,f,s).ph==='ol')return {inside:true,d:0};
+  let best=1e9,bp=null;
+  for(let ff=0;ff<=100;ff+=0.5)for(let ss=0;ss<=100-ff;ss+=0.5){const mm=100-ff-ss;
+    if(primary(mm,ff,ss).ph==='ol'){const d=Math.hypot(mm-m,ff-f,ss-s);if(d<best){best=d;bp=[mm,ff,ss];}}}
+  let addMg=null,rmSi=null;
+  for(let u=0;u<=150;u+=0.25){const n=100+u;if(primary((m+u)/n*100,f/n*100,s/n*100).ph==='ol'){addMg=u;break;}}
+  for(let v=0;v<=s;v+=0.25){const n=100-v;if(primary(m/n*100,f/n*100,(s-v)/n*100).ph==='ol'){rmSi=v;break;}}
+  return {inside:false,d:bp?best:null,pt:bp,addMg,rmSi};
+}
+/* ===== DATA & STATE ===== */
+const COMP=[['Ni',0.08],['Fe elemental',13.06],['FeO aktual',16.80],['Co',0.01],['MgO',23.36],['SiO2',49.37],['CaO',1.26],['Al2O3',5.32],['MnO',0.45],['Cr',0.89]];
+const FE2FEO=71.844/55.845;
+const PRE=[1300,1400,1460,1500,1520,1540,1600,1700,1800];
+let st={c:Object.fromEntries(COMP),T:1500};
+try{const sv=JSON.parse(localStorage.getItem('fspa')||'null');if(sv&&sv.c)st=sv;}catch(e){}
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem('fspa',JSON.stringify(st));}catch(e){}};
+function num(v){v=String(v==null?'':v).trim().replace(/\s/g,'');if(/^-?\d+,\d+$/.test(v))v=v.replace(',','.');return /^-?(\d+\.?\d*|\.\d+)$/.test(v)?parseFloat(v):NaN;}
+const nv=v=>{const n=num(v);return isNaN(n)?0:n;};
+const DRE=/^\d{1,2}[-\/. ][A-Za-z]{3,}[-\/. ]\d{2,4}$|^\d{1,4}[-\/.]\d{1,2}[-\/.]\d{1,4}$/;
+function ingest(text,start){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');if(!lines.length)return;
+  const pi=$('pinfo');
+  if(lines.every(l=>l.indexOf('\t')<0)){
+    let n=0;lines.forEach((l,i)=>{const k=COMP[start+i];if(k){const v=num(l);st.c[k[0]]=isNaN(v)?'':v;n++;}});
+    pi.textContent=n+' angka ditempel ke bawah mulai dari '+COMP[start][0]+'.';
+  }else{
+    const rows=[];
+    lines.forEach(l=>{const c=l.split('\t'),f=(c[0]||'').trim(),off=DRE.test(f)?3:(f!==''&&isNaN(num(f))?1:0);
+      const v=COMP.map((_,i)=>num(c[off+i]));
+      if(isFinite(v[2])&&isFinite(v[4])&&isFinite(v[5]))rows.push({d:off===3?f:'',j:off===3?(c[1]||'').trim():'',id:off===3?(c[2]||'').trim():(off===1?f:''),v});});
+    if(!rows.length){pi.textContent='Tidak ada baris valid. Pastikan yang disalin berisi kolom Ni sampai Cr (urutan seperti di Excel).';return;}
+    COMP.forEach(([k],i)=>{const a=rows.map(r=>r.v[i]).filter(isFinite);st.c[k]=a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(4):'';});
+    const q=r=>[r.d,r.j,r.id].filter(Boolean).join(' ');
+    pi.textContent=(rows.length===1?'Terbaca 1 baris: '+q(rows[0]):'Rata-rata dari '+rows.length+' baris: '+q(rows[0])+' sampai '+q(rows[rows.length-1]))+(lines.length>rows.length?' ('+(lines.length-rows.length)+' baris dilewati karena header/kosong/error).':'.');
+  }
+  save();buildInputs();render();
+}
+document.addEventListener('paste',e=>{const t=e.target;if(!t||!(t.id==='paste'||(t.dataset&&t.dataset.k)))return;
+  const z=((e.clipboardData||window.clipboardData).getData('text')||'').replace(/[\r\n]+$/,'');
+  if(!/[\t\n]/.test(z))return;e.preventDefault();
+  const idx=t.dataset&&t.dataset.k?COMP.findIndex(c=>c[0]===t.dataset.k):0;ingest(z,Math.max(idx,0));$('paste').value='';});
+$('clr').onclick=()=>{COMP.forEach(([k])=>st.c[k]='');save();buildInputs();render();$('pinfo').textContent='Semua angka dikosongkan. Tempel data dari Excel atau isi manual.';};
+function ter(){const m=nv(st.c['MgO']),f=nv(st.c['FeO aktual']),s=nv(st.c['SiO2']),t=m+f+s;return t>0?{m:m/t*100,f:f/t*100,s:s/t*100,raw:[m,f,s],t}:null;}
+const F=(v,d=1)=>Number(v).toFixed(d);
+/* ===== UI ===== */
+function buildInputs(){
+  $('inp').innerHTML=COMP.map(([k])=>`<tr><td>${k.replace('SiO2','SiO₂').replace('Al2O3','Al₂O₃')}</td><td class="n"><input type="text" inputmode="decimal" data-k="${k}" value="${st.c[k]}" aria-label="${k}"></td></tr>`).join('');
+  $('inp').querySelectorAll('input').forEach(i=>i.oninput=()=>{st.c[i.dataset.k]=i.value;
+    if(i.dataset.k==='Fe elemental'){const n=num(i.value);st.c['FeO aktual']=isNaN(n)?'':+(n*FE2FEO).toFixed(2);const fo=$('inp').querySelector('[data-k="FeO aktual"]');if(fo)fo.value=st.c['FeO aktual'];}
+    save();render();});
+  $('pre').innerHTML=PRE.map(t=>`<button data-t="${t}">${t}</button>`).join('');
+  $('pre').querySelectorAll('button').forEach(b=>b.onclick=()=>{st.T=+b.dataset.t;save();render();});
+  $('lg').innerHTML=`<span><i style="background:${LIQC}"></i>Cair penuh</span>`+Object.values(PH).map(p=>`<span><i style="background:${p.c}"></i>Cair + ${p.n}</span>`).join('');
+}
+$('tman').oninput=e=>{const v=parseFloat(e.target.value);if(v>=1100&&v<=2000){st.T=v;save();render(false);$('tsl').value=v;}};
+$('tsl').oninput=e=>{st.T=+e.target.value;save();$('tman').value=st.T;render(false);};
+$('rst').onclick=()=>{st={c:Object.fromEntries(COMP),T:1500};save();buildInputs();render();};
+/* ===== DIAGRAM ===== */
+const cv=$('cv'),ctx=cv.getContext('2d'),W=640,H=600,PAD=55,SIDE=530,HT=SIDE*Math.sin(Math.PI/3),BY=530,AX=PAD;
+const px2c=(x,y)=>{const s=(BY-y)/HT*100,f=((x-AX)-s/100*SIDE/2)/SIDE*100;return {m:100-f-s,f,s};};
+const c2px=(m,f,s)=>({x:AX+f/100*SIDE+s/100*SIDE/2,y:BY-s/100*HT});
+function draw(){
+  const T=st.T,img=ctx.createImageData(W,H),d=img.data,TLa=new Float32Array(W*H).fill(NaN),Pa=new Int8Array(W*H).fill(-1);
+  const keys=['mw','ol','px','si'],LAB={};
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=px2c(x,y);if(c.m<0||c.f<0||c.s<0)continue;const p=primary(c.m,c.f,c.s),i=y*W+x;TLa[i]=p.TL;Pa[i]=keys.indexOf(p.ph);}
+  const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const cols=keys.map(k=>hex(PH[k].c)),lc=hex(LIQC);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,o=i*4;d[o]=d[o+1]=d[o+2]=255;d[o+3]=255;if(Pa[i]<0)continue;
+    let col=TLa[i]<=T?lc:cols[Pa[i]];d[o]=col[0];d[o+1]=col[1];d[o+2]=col[2];
+    const r=x+1<W?i+1:i,b=y+1<H?i+W:i;
+    const edge=(j)=>Pa[j]>=0&&Pa[j]!==Pa[i];
+    if(edge(r)||edge(b)){d[o]=d[o+1]=d[o+2]=110;}
+    else if(Pa[r]>=0&&Pa[b]>=0){
+      if((TLa[r]<=T)!==(TLa[i]<=T)||(TLa[b]<=T)!==(TLa[i]<=T)){d[o]=d[o+1]=d[o+2]=0;}
+      else{const a0=Math.floor(TLa[i]/100),a1=Math.floor(TLa[r]/100),a2=Math.floor(TLa[b]/100);
+        if(a1!==a0||a2!==a0){const lv=Math.max(a0,a1!==a0?a1:a2)*100,lq=TLa[i]<=T;if(lq){d[o]=150;d[o+1]=170;d[o+2]=185;}else{d[o]=d[o+1]=d[o+2]=255;}(LAB[lv]=LAB[lv]||[]).push([x,y]);}}}}
+  ctx.putImageData(img,0,0);
+  ctx.font='10px Segoe UI,Arial';ctx.lineWidth=3;ctx.lineJoin='round';
+  Object.keys(LAB).forEach(lv=>{const a=LAB[lv];if(a.length<40)return;const q=a[Math.floor(a.length*0.5)];ctx.strokeStyle='rgba(255,255,255,.85)';ctx.strokeText(lv+'°C',q[0]-12,q[1]+3);ctx.fillStyle='#36505e';ctx.fillText(lv+'°C',q[0]-12,q[1]+3);});
+  ctx.lineWidth=1.5;ctx.lineJoin='miter';
+  ctx.strokeStyle='#17262f';ctx.lineWidth=1.5;ctx.beginPath();const A=c2px(100,0,0),B=c2px(0,100,0),C=c2px(0,0,100);ctx.moveTo(A.x,A.y);ctx.lineTo(B.x,B.y);ctx.lineTo(C.x,C.y);ctx.closePath();ctx.stroke();
+  ctx.font='11px Segoe UI,Arial';ctx.fillStyle='#17262f';ctx.lineWidth=.5;ctx.strokeStyle='#0003';
+  for(let v=10;v<100;v+=10){
+    let p1=c2px(100-v,v,0),p2=c2px(100-v,0,v);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();           // MgO konstan
+    p1=c2px(0,v,100-v);p2=c2px(100-v,v,0);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();               // FeO konstan
+    p1=c2px(100-v,0,v);p2=c2px(0,100-v,v);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();               // SiO2 konstan
+    const q=c2px(0,v,0);ctx.fillText(v,q.x-6,q.y+14);const r=c2px(100-v,0,v);ctx.fillText(v,r.x-24,r.y+4);const t=c2px(v,0,100-v);ctx.fillText(v,t.x+8,t.y+4);}
+  ctx.font='bold 14px Segoe UI,Arial';ctx.fillText('MgO',A.x-40,A.y+22);ctx.fillText('FeO',B.x+8,B.y+22);ctx.fillText('SiO₂',C.x-14,C.y-10);
+  ctx.font='12px Segoe UI,Arial';ctx.fillText('FeO wt% →',B.x-110,B.y+40);ctx.fillText('← MgO wt%',A.x+10,A.y+40);ctx.fillText('SiO₂ wt% ↑',C.x+SIDE/4+30,C.y+HT/2-20);
+  const t=ter();if(t){const q=c2px(t.m,t.f,t.s);ctx.beginPath();ctx.arc(q.x,q.y,7,0,7);ctx.fillStyle='#d6401f';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke();ctx.beginPath();ctx.arc(q.x,q.y,7,0,7);ctx.strokeStyle='#17262f';ctx.lineWidth=1;ctx.stroke();}
+  ctx.fillStyle='#17262f';ctx.font='bold 14px Segoe UI,Arial';ctx.fillText('Suhu terpilih: '+F(T,0)+' °C  (kalibrasi FactSage pengguna)',PAD,24);
+}
+cv.onmousemove=e=>{const r=cv.getBoundingClientRect(),c=px2c((e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height);
+  if(c.m<0||c.f<0||c.s<0){$('tip').textContent='Arahkan kursor ke dalam segitiga.';return;}
+  const a=analyze(c.m,c.f,c.s,st.T);$('tip').textContent=`MgO ${F(c.m)} · FeO ${F(c.f)} · SiO₂ ${F(c.s)} wt% → ${a.asm}, liquidus ≈ ${F(a.TL,0)} °C`;};
+/* ===== HASIL ===== */
+let LAST=null;
+function render(upd=true){
+  const t=ter();if(upd){$('tman').value=st.T;}$('tsl').value=st.T;
+  document.querySelectorAll('#pre button').forEach(b=>b.classList.toggle('on',+b.dataset.t===st.T));
+  $('norm').innerHTML=t?`<tr><th></th><th class="n">Asli</th><th class="n">Normalisasi</th></tr>
+  <tr><td>MgO</td><td class="n">${F(t.raw[0],2)}</td><td class="n">${F(t.m,2)}</td></tr><tr><td>FeO</td><td class="n">${F(t.raw[1],2)}</td><td class="n">${F(t.f,2)}</td></tr><tr><td>SiO₂</td><td class="n">${F(t.raw[2],2)}</td><td class="n">${F(t.s,2)}</td></tr>
+  <tr><td><b>SiO₂/MgO (Si/Mg)</b></td><td class="n"><b>${t.m>0?F(t.s/t.m,2):'-'}</b></td><td class="n"><b>${t.m>0?F(t.s/t.m,2):'-'}</b></td></tr>`:'';
+  const tot=COMP.filter(([k])=>k!=='Fe elemental').reduce((a,[k])=>a+nv(st.c[k]),0),df=tot-100;
+  $('tot').innerHTML=`<b>Total komposisi: ${F(tot,2)}%</b> (Fe elemental tidak dihitung, sudah diwakili FeO) &mdash; `+(Math.abs(df)<=0.5?`<span class="ok"><b>sudah ≈100%</b></span>`:`<span class="bad"><b>belum 100%</b>, ${df<0?'kurang':'lebih'} ${F(Math.abs(df),2)}%</span>`+(df<0?' (sisa bisa berupa S, Cr₂O₃, LOI, atau komponen tak terukur)':' (cek kembali input, mungkin ada hitung ganda)'));
+  draw();
+  if(!t){fillSens(null);drawChart();$('res').innerHTML='<h2>Hasil</h2><p class="bad">Isi MgO, FeO aktual, dan SiO₂ lebih dari 0 untuk memulai analisis.</p>';LAST=null;return;}
+  const a=analyze(t.m,t.f,t.s,st.T),od=olivineDist(t.m,t.f,t.s);
+  const oliv=od.inside?(a.TL>st.T?`<span class="ok">Di dalam medan olivin dan olivin sudah mengkristal pada ${F(st.T,0)} °C.</span>`:`<span class="ok">Di dalam medan olivin</span>, tetapi pada ${F(st.T,0)} °C masih cair penuh; olivin muncul saat suhu turun di bawah ≈ ${F(a.TL,0)} °C.`):
+   `<span class="bad">Di luar medan olivin</span> (fasa primer: ${PH[a.primary].n}). Jarak terdekat ke medan olivin ≈ ${F(od.d,1)} wt% (terner). Perkiraan: tambah MgO ≈ ${od.addMg!=null?F(od.addMg,1)+' g/100 g slag':'tidak cukup'}, atau kurangi SiO₂ ≈ ${od.rmSi!=null?F(od.rmSi,1)+' g/100 g slag':'tidak cukup'}.`+(od.pt?` Titik terdekat: MgO ${F(od.pt[0])} / FeO ${F(od.pt[1])} / SiO₂ ${F(od.pt[2])}.`:'');
+  LAST={t,a,od};LAST.sens=fillSens(t);drawChart();
+  $('res').innerHTML=`<h2>Hasil analisis pada ${F(st.T,0)} °C</h2>
+  <p class="big">${a.asm}</p>
+  <p><span class="k">SiO₂/MgO (Si/Mg):</span> <b>${t.m>0?F(t.s/t.m,2):'-'}</b> &nbsp; <span class="k">MgO/SiO₂:</span> ${t.s>0?F(t.m/t.s,2):'-'}</p>
+  <p><span class="k">Fasa primer saat pendinginan:</span> ${PH[a.primary].n} &nbsp; <span class="k">Fasa kedua:</span> ${PH[a.sec].n}</p>
+  <p><span class="k">Liquidus ≈</span> ${F(a.TL,0)} °C · <span class="k">Solidus ≈</span> ${SOL} °C (eutektik fayalit–silika) · <span class="k">Superheat:</span> ${a.sup>=0?'+':''}${F(a.sup,0)} °C</p>
+  <p><span class="k">Fraksi cair ≈</span> ${F(a.fl*100,0)}% · <span class="k">padat ≈</span> ${F(a.fs*100,0)}% · <span class="k">olivin ≈</span> ${F(a.olf*100,0)}% <span class="src">(perkiraan kualitatif)</span></p>
+  <p><b>Posisi terhadap olivin:</b> ${oliv}</p>
+  <p class="src">Sumber: kalibrasi ke data FactSage pengguna (Facsage_cal.xlsx, grafik liquidus vs S/M, gambar proyeksi) · sistem MgO–FeO–SiO₂ · 1 atm · kondisi reduktif (referensi kesetimbangan Fe metal) · basis wt% ternary ternormalisasi · akurasi menengah di dekat garis data, lebih rendah di tempat lain. Fraksi padat dihitung dari interpolasi liquidus–solidus, bukan kalkulasi kesetimbangan. Risiko kristalisasi berlebih (viskositas naik, akresi, tersumbatnya launder) perlu dinilai terhadap batasan proses, bukan hanya dari suhu.</p>`;
+  $('scn').innerHTML='<tr><th>Suhu (°C)</th><th>Asemblase</th><th class="n">Cair (%)</th><th class="n">Olivin (%)</th></tr>'+PRE.map(T=>{const r=analyze(t.m,t.f,t.s,T);return `<tr><td>${T}</td><td>${r.asm}</td><td class="n">${F(r.fl*100,0)}</td><td class="n">${F(r.olf*100,0)}</td></tr>`;}).join('');
+}
+
+/* ===== GRAFIK LIQUIDUS vs S/M & SENSITIVITAS ===== */
+const REF=[{n:'Excel: FeO 0%, Al₂O₃ 0',c:'#ffc000',s:'d',p:[[1, 1810.3], [1.1, 1761.5], [1.2, 1712.5], [1.3, 1661.1], [1.4, 1611.2], [1.5, 1561.1], [1.6, 1555.7], [1.7, 1550.8], [1.8, 1568.6], [1.9, 1606.1], [2.0, 1639.2], [2.1, 1663.9], [2.2, 1686.7], [2.3, 1714.0], [2.4, 1737.5], [2.5, 1756.8], [2.6, 1774.8], [2.7, 1791.6], [2.8, 1805.3], [2.9, 1818.1], [3.0, 1828.5]]},{n:'Excel: FeO 25,7%, Al₂O₃ ≈3%',c:'#e97132',s:'t',p:[[1, 1679.1], [1.1, 1667.4], [1.2, 1651.2], [1.3, 1632.9], [1.4, 1612.9], [1.5, 1592.1], [1.6, 1572.7], [1.7, 1551.4], [1.8, 1532.4], [1.9, 1512.6], [2.0, 1494.5], [2.1, 1475.9], [2.2, 1459.3], [2.3, 1444.2], [2.4, 1428.1], [2.5, 1413.5], [2.6, 1400.7], [2.7, 1396.0], [2.8, 1394.0], [2.9, 1391.6], [3.0, 1389.5]]},{n:'Excel: FeO 25,7%, Al₂O₃ 0',c:'#7f6000',s:'s',p:[[1, 1731.7], [1.1, 1716.0], [1.2, 1696.1], [1.3, 1673.2], [1.4, 1649.1], [1.5, 1624.5], [1.6, 1600.7], [1.7, 1575.2], [1.8, 1551.6], [1.9, 1527.5], [2.0, 1506.3], [2.1, 1484.4], [2.2, 1462.2], [2.3, 1442.5], [2.4, 1437.4], [2.5, 1435.1], [2.6, 1432.4], [2.7, 1456.4], [2.8, 1480.4], [2.9, 1500.7], [3.0, 1517.7]]}];
+const CHC={0:'#ffc000',5:'#c00000',10:'#0070c0',15:'#38571f',20:'#7030a0',25:'#7f6000',30:'#000000'};
+function tlRF(f,r){const m=(100-f)/(1+r);return primary(m,f,r*m).TL;}
+function mk(g,sh,x,y,c){g.fillStyle=c;g.beginPath();if(sh==='d'){g.moveTo(x,y-5);g.lineTo(x+5,y);g.lineTo(x,y+5);g.lineTo(x-5,y);}else if(sh==='t'){g.moveTo(x,y-5);g.lineTo(x+5,y+4);g.lineTo(x-5,y+4);}else g.rect(x-4,y-4,8,8);g.closePath();g.fill();g.strokeStyle='#fff';g.lineWidth=1;g.stroke();}
+const vis=k=>!st.vis||st.vis[k]!==false;
+function drawChart(){
+  const c=$('cv2'),g=c.getContext('2d'),Wc=c.width,Hc=c.height,L=70,R=20,Tp=18,B=56,t=ter();
+  const rs=t&&t.m>0?t.s/t.m:null,slag=t?primary(t.m,t.f,t.s).TL:null;
+  let x0=1,x1=3,y0=1350,y1=1850;
+  if(rs){x0=Math.min(x0,Math.floor((rs-.1)*10)/10);x1=Math.max(x1,Math.ceil((rs+.1)*10)/10);}
+  if(slag){y0=Math.min(y0,Math.floor(slag/50)*50);y1=Math.max(y1,Math.ceil(slag/50)*50);}
+  const X=r=>L+(r-x0)/(x1-x0)*(Wc-L-R),Y=T=>Hc-B-(T-y0)/(y1-y0)*(Hc-Tp-B);
+  g.clearRect(0,0,Wc,Hc);g.fillStyle='#fff';g.fillRect(0,0,Wc,Hc);
+  g.font='12px Segoe UI,Arial';g.lineWidth=1;
+  for(let r=Math.ceil(x0*10)/10;r<=x1+1e-6;r+=.1){g.strokeStyle=Math.abs(r*2-Math.round(r*2))<1e-6?'#bbb':'#e4e8ea';g.beginPath();g.moveTo(X(r),Tp);g.lineTo(X(r),Hc-B);g.stroke();}
+  for(let T=y0;T<=y1;T+=50){g.strokeStyle='#d5dbde';g.beginPath();g.moveTo(L,Y(T));g.lineTo(Wc-R,Y(T));g.stroke();g.fillStyle='#8a1f11';g.textAlign='right';g.fillText(T,L-6,Y(T)+4);}
+  g.textAlign='center';for(let r=Math.ceil(x0*2)/2;r<=x1+1e-6;r+=.5){g.fillStyle='#8a1f11';g.fillText(r.toFixed(1),X(r),Hc-B+18);}
+  g.fillStyle='#17262f';g.font='bold 13px Segoe UI,Arial';g.fillText('%SiO₂ / %MgO',(L+Wc-R)/2,Hc-12);
+  g.save();g.translate(16,(Tp+Hc-B)/2);g.rotate(-Math.PI/2);g.fillText('Temperatur leleh slag (°C)',0,0);g.restore();
+  g.save();g.beginPath();g.rect(L,Tp,Wc-L-R,Hc-Tp-B);g.clip();
+  const line=(f,col,w,dash)=>{g.strokeStyle=col;g.lineWidth=w;g.setLineDash(dash||[]);g.beginPath();let on=false;for(let r=x0;r<=x1+1e-6;r+=.02){const x=X(r),y=Y(tlRF(f,r));if(!on){g.moveTo(x,y);on=true;}else g.lineTo(x,y);}g.stroke();g.setLineDash([]);};
+  Object.keys(CHC).forEach(k=>{if(vis(k))line(+k,CHC[k],2);});
+  if(t&&vis('slag'))line(t.f,'#d6401f',3.5,[8,5]);
+  if(st.T>=y0&&st.T<=y1){g.strokeStyle='#245a78';g.lineWidth=1.8;g.setLineDash([3,4]);g.beginPath();g.moveTo(L,Y(st.T));g.lineTo(Wc-R,Y(st.T));g.stroke();g.setLineDash([]);}
+  REF.forEach((q,i)=>{if(vis('r'+i))q.p.forEach(([r,T])=>{if(r>=x0&&r<=x1)mk(g,q.s,X(r),Y(T),q.c);});});
+  if(rs){g.beginPath();g.arc(X(rs),Y(slag),7,0,7);g.fillStyle='#d6401f';g.fill();g.lineWidth=2;g.strokeStyle='#fff';g.stroke();g.beginPath();g.arc(X(rs),Y(slag),7,0,7);g.strokeStyle='#17262f';g.lineWidth=1;g.stroke();}
+  g.restore();g.strokeStyle='#17262f';g.lineWidth=1.5;g.strokeRect(L,Tp,Wc-L-R,Hc-Tp-B);
+}
+function sens(t){
+  const base=primary(t.m,t.f,t.s);
+  const sc=[['+1 wt% MgO (lalu normalisasi)',[1,0,0]],['+1 wt% FeO (lalu normalisasi)',[0,1,0]],['+1 wt% SiO₂ (lalu normalisasi)',[0,0,1]],['FeO +1, MgO −1 (SiO₂ tetap)',[-1,1,0]],['FeO +1, SiO₂ −1 (MgO tetap)',[0,1,-1]],['MgO +1, SiO₂ −1 (FeO tetap)',[1,0,-1]],['FeO +1 dengan Si/Mg tetap (MgO dan SiO₂ turun proporsional)',null]];
+  const rows=[{n:'Komposisi saat ini',si:t.m>0?t.s/t.m:NaN,TL:base.TL,d:0,ph:base.ph}];
+  sc.forEach(([n,d])=>{let v;if(d===null){const k=(100-t.f-1)/(100-t.f);v=[t.m*k,t.f+1,t.s*k];}else{v=[t.m+d[0],t.f+d[1],t.s+d[2]];const sm=v[0]+v[1]+v[2];v=v.map(x=>x/sm*100);}
+    v=v.map(x=>Math.max(x,0));const p=primary(v[0],v[1],v[2]);rows.push({n,si:v[0]>0?v[2]/v[0]:NaN,TL:p.TL,d:p.TL-base.TL,ph:p.ph});});
+  return rows;
+}
+function fillSens(t){
+  if(!t){$('sens').innerHTML='';return [];}
+  const rows=sens(t);
+  $('sens').innerHTML='<tr><th>Skenario</th><th class="n">Si/Mg</th><th class="n">Liquidus (°C)</th><th class="n">Δ Liquidus</th><th>Fasa primer</th></tr>'+rows.map((r,i)=>`<tr><td>${r.n}</td><td class="n">${F(r.si,2)}</td><td class="n">${F(r.TL,0)}</td><td class="n ${i?(r.d<-0.5?'ok':(r.d>0.5?'bad':'')):''}">${i?(r.d>0?'+':'')+F(r.d,0):'-'}</td><td>${PH[r.ph].n}</td></tr>`).join('');
+  return rows;
+}
+function buildLegend(){
+  const it=[...Object.keys(CHC).map(k=>[k,CHC[k],'FeO '+k+'%']),['slag','#d6401f','FeO slag Anda'],...REF.map((q,i)=>['r'+i,q.c,q.n])];
+  $('lg2').innerHTML=it.map(([k,c,n])=>`<label style="cursor:pointer"><input type="checkbox" data-v="${k}" ${vis(k)?'checked':''}> <i style="background:${c}"></i>${n}</label>`).join('');
+  $('lg2').querySelectorAll('input').forEach(i=>i.onchange=()=>{st.vis=st.vis||{};st.vis[i.dataset.v]=i.checked;save();drawChart();});
+}
+const setAll=on=>{st.vis={};[...Object.keys(CHC),'slag','r0','r1','r2'].forEach(k=>st.vis[k]=on);save();buildLegend();drawChart();};
+$('vall').onclick=()=>setAll(true);$('vnone').onclick=()=>setAll(false);
+buildLegend();
+$('bpng2').onclick=()=>{const a=document.createElement('a');a.href=$('cv2').toDataURL('image/png');a.download='liquidus_vs_SiMg.png';a.click();};
+/* ===== EKSPOR ===== */
+const fname=()=>'slag_'+st.T+'C';
+$('bpng').onclick=()=>{const a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download=fname()+'.png';a.click();};
+$('bpdf').onclick=()=>{if(!LAST||!window.jspdf){alert('Data belum lengkap atau pustaka PDF belum termuat (butuh internet).');return;}
+  const {jsPDF}=window.jspdf,doc=new jsPDF({unit:'mm',format:'a4'}),{t,a,od}=LAST;
+  doc.setFontSize(14);doc.text('Ferronickel Slag Phase Analyzer - Laporan',14,14);
+  doc.addImage(cv.toDataURL('image/png'),'PNG',14,20,120,112);
+  doc.setFontSize(10);let y=140;const L=s=>{doc.splitTextToSize(s,180).forEach(l=>{doc.text(l,14,y);y+=5;});};
+  L(`Suhu: ${F(st.T,0)} C | Komposisi ternary (wt%): MgO ${F(t.m,2)}, FeO ${F(t.f,2)}, SiO2 ${F(t.s,2)} | SiO2/MgO ${t.m>0?F(t.s/t.m,2):'-'}`);
+  L(`Asemblase: ${a.asm.replace('Cair','Cair')}`);L(`Fasa primer: ${PH[a.primary].n} | Liquidus ~${F(a.TL,0)} C | Solidus ~${SOL} C | Superheat ${F(a.sup,0)} C`);
+  L(`Fraksi cair ~${F(a.fl*100,0)}%, padat ~${F(a.fs*100,0)}%, olivin ~${F(a.olf*100,0)}%`);
+  L(od.inside?'Posisi: di dalam medan olivin.':`Posisi: di luar medan olivin. Jarak terdekat ~${F(od.d,1)} wt%. Tambah MgO ~${od.addMg!=null?F(od.addMg,1):'n/a'} g/100 g atau kurangi SiO2 ~${od.rmSi!=null?F(od.rmSi,1):'n/a'} g/100 g.`);
+  y+=3;L('Catatan: model ilustratif semi-kuantitatif (1 atm, kondisi reduktif, basis wt%), bukan data tervalidasi/FactSage. Deviasi dapat mencapai puluhan hingga >100 C.');
+  doc.addPage();doc.setFontSize(13);doc.text('Liquidus vs SiO2/MgO',14,14);doc.addImage($('cv2').toDataURL('image/png'),'PNG',14,20,182,113);
+  doc.setFontSize(10);y=142;doc.text('Sensitivitas komposisi (perubahan liquidus, C)',14,y);y+=6;LAST.sens.forEach(r=>{doc.splitTextToSize(`${r.n.replace(/₂/g,'2').replace(/−/g,'-')}: Si/Mg ${F(r.si,2)}, liquidus ${F(r.TL,0)} C, delta ${r.d>0?'+':''}${F(r.d,0)}`,180).forEach(l=>{doc.text(l,14,y);y+=5;});});
+  doc.save(fname()+'.pdf');};
+$('bxls').onclick=()=>{if(!LAST||!window.XLSX){alert('Data belum lengkap atau pustaka Excel belum termuat (butuh internet).');return;}
+  const {t,a,od}=LAST,wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Komponen','wt%'],...COMP.map(([k])=>[k,nv(st.c[k])])]),'Input');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Komponen','Asli (wt%)','Normalisasi (wt%)'],['MgO',t.raw[0],t.m],['FeO',t.raw[1],t.f],['SiO2',t.raw[2],t.s],['SiO2/MgO',t.m>0?t.raw[2]/t.raw[0]:'',t.m>0?t.s/t.m:''],['Total komposisi (tanpa Fe elemental)',COMP.filter(([k])=>k!=='Fe elemental').reduce((a,[k])=>a+nv(st.c[k]),0),'']]),'Normalisasi');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Parameter','Nilai'],['Suhu (C)',st.T],['Asemblase',a.asm],['Fasa primer',PH[a.primary].n],['Liquidus (C)',Math.round(a.TL)],['Solidus (C)',SOL],['Superheat (C)',Math.round(a.sup)],['Fraksi cair (%)',Math.round(a.fl*100)],['Fraksi padat (%)',Math.round(a.fs*100)],['Fraksi olivin (%)',Math.round(a.olf*100)],['Di medan olivin',od.inside?'Ya':'Tidak'],['Jarak ke olivin (wt%)',od.inside?0:od.d],['Tambah MgO (g/100 g)',od.addMg??''],['Kurangi SiO2 (g/100 g)',od.rmSi??''],['Catatan','Model ilustratif, bukan data tervalidasi']]),'Hasil');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Suhu (C)','Asemblase','Cair (%)','Olivin (%)'],...PRE.map(T=>{const r=analyze(t.m,t.f,t.s,T);return [T,r.asm,Math.round(r.fl*100),Math.round(r.olf*100)];})]),'Skenario Suhu');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Skenario','Si/Mg','Liquidus (C)','Delta liquidus (C)','Fasa primer'],...LAST.sens.map(r=>[r.n,r.si,Math.round(r.TL),Math.round(r.d),PH[r.ph].n])]),'Sensitivitas');
+  XLSX.writeFile(wb,fname()+'.xlsx');};
+buildInputs();render();
+</script>
+</body>
+</html>
