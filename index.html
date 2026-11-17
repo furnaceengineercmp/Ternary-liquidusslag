@@ -141,21 +141,29 @@ function num(v){v=String(v==null?'':v).trim().replace(/\s/g,'');if(/^-?\d+,\d+$/
 const nv=v=>{const n=num(v);return isNaN(n)?0:n;};
 const DRE=/^\d{1,2}[-\/. ][A-Za-z]{3,}[-\/. ]\d{2,4}$|^\d{1,4}[-\/.]\d{1,2}[-\/.]\d{1,4}$/;
 function ingest(text,start){
-  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');if(!lines.length)return;
-  const pi=$('pinfo');
-  if(lines.every(l=>l.indexOf('\t')<0)){
-    let n=0;lines.forEach((l,i)=>{const k=COMP[start+i];if(k){const v=num(l);st.c[k[0]]=isNaN(v)?'':v;n++;}});
-    pi.textContent=n+' angka ditempel ke bawah mulai dari '+COMP[start][0]+'.';
-  }else{
-    const rows=[];
-    lines.forEach(l=>{const c=l.split('\t'),f=(c[0]||'').trim(),off=DRE.test(f)?3:(f!==''&&isNaN(num(f))?1:0);
-      const v=COMP.map((_,i)=>num(c[off+i]));
-      if(isFinite(v[2])&&isFinite(v[4])&&isFinite(v[5]))rows.push({d:off===3?f:'',j:off===3?(c[1]||'').trim():'',id:off===3?(c[2]||'').trim():(off===1?f:''),v});});
-    if(!rows.length){pi.textContent='Tidak ada baris valid. Pastikan yang disalin berisi kolom Ni sampai Cr (urutan seperti di Excel).';return;}
-    COMP.forEach(([k],i)=>{const a=rows.map(r=>r.v[i]).filter(isFinite);st.c[k]=a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(4):'';});
-    const q=r=>[r.d,r.j,r.id].filter(Boolean).join(' ');
-    pi.textContent=(rows.length===1?'Terbaca 1 baris: '+q(rows[0]):'Rata-rata dari '+rows.length+' baris: '+q(rows[0])+' sampai '+q(rows[rows.length-1]))+(lines.length>rows.length?' ('+(lines.length-rows.length)+' baris dilewati karena header/kosong/error).':'.');
+  const pi=$('pinfo'),raw=text.replace(/\r/g,'').replace(/\u00a0/g,' ');
+  const lines=raw.split('\n').filter(l=>l.trim()!=='');if(!lines.length)return;
+  const rows=[];let skipped=0;
+  const pushRow=c=>{const f=(c[0]||'').trim(),off=DRE.test(f)?3:(f!==''&&isNaN(num(f))?1:0);
+    const v=COMP.map((_,i)=>num(c[off+i]));
+    if(isFinite(v[2])&&isFinite(v[4])&&isFinite(v[5]))rows.push({d:off===3?f:'',j:off===3?(c[1]||'').trim():'',id:off===3?(c[2]||'').trim():(off===1?f:''),v});else skipped++;};
+  const hasTab=lines.some(l=>l.indexOf('\t')>=0);
+  if(hasTab)lines.forEach(l=>pushRow(l.split('\t')));
+  else{
+    for(const sp of [/[\t\n]+|\s{2,}/,/\s+/]){
+      const tok=raw.split(sp).map(x=>x.trim()).filter(x=>x!=='');const di=[];tok.forEach((x,i)=>{if(DRE.test(x))di.push(i);});
+      if(di.length){di.forEach((a,k)=>pushRow(tok.slice(a,di[k+1]===undefined?tok.length:di[k+1])));break;}
+    }
+    if(!rows.length){
+      const vals=lines.map(l=>num(l));const nn=vals.filter(v=>!isNaN(v)).length;
+      if(nn>=Math.ceil(lines.length*0.7)){let n=0;lines.forEach((l,i)=>{const k=COMP[start+i];if(k){const v=num(l);st.c[k[0]]=isNaN(v)?'':v;n++;}});
+        pi.textContent=n+' angka ditempel ke bawah mulai dari '+COMP[start][0]+'.';save();buildInputs();render();return;}
+    }
   }
+  if(!rows.length){pi.textContent='Tidak ada baris valid. Terbaca '+lines.length+' baris, tab: '+(hasTab?'ada':'tidak ada')+'. Awal data: "'+raw.slice(0,90).replace(/\t/g,' → ').replace(/\n/g,' ⏎ ')+'". Pastikan yang disalin mencakup kolom Ni sampai Cr (urutan seperti di Excel).';return;}
+  COMP.forEach(([k],i)=>{const a=rows.map(r=>r.v[i]).filter(isFinite);st.c[k]=a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(4):'';});
+  const q=r=>[r.d,r.j,r.id].filter(Boolean).join(' ');
+  pi.textContent=(rows.length===1?'Terbaca 1 baris: '+q(rows[0]):'Rata-rata dari '+rows.length+' baris: '+q(rows[0])+' sampai '+q(rows[rows.length-1]))+(skipped?' ('+skipped+' baris dilewati karena header/kosong/error).':'.');
   save();buildInputs();render();
 }
 document.addEventListener('paste',e=>{const t=e.target;if(!t||!(t.id==='paste'||(t.dataset&&t.dataset.k)))return;
