@@ -51,7 +51,7 @@ textarea{width:100%;min-height:56px;font:12px/1.4 Consolas,monospace;border:1px 
 <p class="src">Fe elemental sudah terwakili oleh FeO aktual dan tidak dihitung ganda. FeO aktual otomatis dihitung dari Fe elemental (FeO = Fe × 1,2865) setiap Fe diubah; FeO bisa ditimpa manual. Input terner: MgO, FeO aktual, SiO₂.</p>
 <table id="norm"></table>
 <div class="pi" id="tot" role="status"></div>
-<div class="tb"><button id="clr">Hapus semua angka</button><button id="rst">Kembalikan default</button></div></div>
+<div class="tb"><button id="nrm">Normalisasi ke 100% (basis terner)</button><button id="prv" disabled>Kembali ke sampel sebelumnya</button><button id="clr">Hapus semua angka</button><button id="rst">Kembalikan default</button></div></div>
 <div class="pn"><h2>Suhu operasi</h2>
 <div class="tb" id="pre"></div>
 <label>Manual (°C): <input type="number" id="tman" min="1100" max="2000" step="1"></label>
@@ -73,7 +73,7 @@ textarea{width:100%;min-height:56px;font:12px/1.4 Consolas,monospace;border:1px 
 <canvas id="cv2" width="760" height="470"></canvas>
 <div class="tb"><button id="vall">Tampilkan semua</button><button id="vnone">Sembunyikan semua</button></div>
 <div class="lg" id="lg2"></div>
-<p class="src">Centang kurva yang ingin ditampilkan (pilihan tersimpan). Garis berwarna: liquidus model pada FeO 0–30%. Garis merah putus-putus: FeO slag Anda; titik merah: slag Anda. Penanda: data langsung dari Facsage_cal.xlsx. Garis biru putus-putus: suhu operasi terpilih. Di bawah liquidus slag mulai mengkristal.</p>
+<p class="src">Centang kurva yang ingin ditampilkan (pilihan tersimpan). Garis berwarna: liquidus model pada FeO 0–30%. Garis merah putus-putus: FeO slag Anda pada basis terner (FeO ÷ (MgO+FeO+SiO₂)), sehingga lebih tinggi dari input bila total terner kurang dari 100%; titik merah: slag Anda. Penanda: data langsung dari Facsage_cal.xlsx. Garis biru putus-putus: suhu operasi terpilih. Di bawah liquidus slag mulai mengkristal.</p>
 <div class="tb"><button class="pri" id="bpng2">PNG grafik</button></div></div>
 <div class="pn res" id="res"></div>
 <div class="pn"><h2>Sensitivitas komposisi terhadap liquidus</h2><table id="sens"></table>
@@ -157,20 +157,27 @@ function ingest(text,start){
     if(!rows.length){
       const vals=lines.map(l=>num(l));const nn=vals.filter(v=>!isNaN(v)).length;
       if(nn>=Math.ceil(lines.length*0.7)){let n=0;lines.forEach((l,i)=>{const k=COMP[start+i];if(k){const v=num(l);st.c[k[0]]=isNaN(v)?'':v;n++;}});
-        pi.textContent=n+' angka ditempel ke bawah mulai dari '+COMP[start][0]+'.';save();buildInputs();render();return;}
+        pi.textContent=n+' angka ditempel ke bawah mulai dari '+COMP[start][0]+'.';st.prev=null;save();buildInputs();render();return;}
     }
   }
   if(!rows.length){pi.textContent='Tidak ada baris valid. Terbaca '+lines.length+' baris, tab: '+(hasTab?'ada':'tidak ada')+'. Awal data: "'+raw.slice(0,90).replace(/\t/g,' → ').replace(/\n/g,' ⏎ ')+'". Pastikan yang disalin mencakup kolom Ni sampai Cr (urutan seperti di Excel).';return;}
   COMP.forEach(([k],i)=>{const a=rows.map(r=>r.v[i]).filter(isFinite);st.c[k]=a.length?+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(4):'';});
   const q=r=>[r.d,r.j,r.id].filter(Boolean).join(' ');
   pi.textContent=(rows.length===1?'Terbaca 1 baris: '+q(rows[0]):'Rata-rata dari '+rows.length+' baris: '+q(rows[0])+' sampai '+q(rows[rows.length-1]))+(skipped?' ('+skipped+' baris dilewati karena header/kosong/error).':'.');
-  save();buildInputs();render();
+  st.prev=null;save();buildInputs();render();
 }
 document.addEventListener('paste',e=>{const t=e.target;if(!t||!(t.id==='paste'||(t.dataset&&t.dataset.k)))return;
   const z=((e.clipboardData||window.clipboardData).getData('text')||'').replace(/[\r\n]+$/,'');
   if(!/[\t\n]/.test(z))return;e.preventDefault();
   const idx=t.dataset&&t.dataset.k?COMP.findIndex(c=>c[0]===t.dataset.k):0;ingest(z,Math.max(idx,0));$('paste').value='';});
-$('clr').onclick=()=>{COMP.forEach(([k])=>st.c[k]='');save();buildInputs();render();$('pinfo').textContent='Semua angka dikosongkan. Tempel data dari Excel atau isi manual.';};
+$('nrm').onclick=()=>{const t=ter();if(!t)return;
+  if(Math.abs(t.t-100)<0.02){$('pinfo').textContent='MgO + FeO + SiO₂ sudah 100%, tidak perlu dinormalisasi.';return;}
+  st.prev=JSON.parse(JSON.stringify(st.c));
+  st.c['MgO']=+t.m.toFixed(2);st.c['FeO aktual']=+t.f.toFixed(2);st.c['SiO2']=+t.s.toFixed(2);st.c['Fe elemental']=+(t.f/FE2FEO).toFixed(2);
+  $('pinfo').textContent='MgO, FeO, dan SiO₂ diganti dengan nilai normalisasi (jumlah 100%). Fe elemental dihitung ulang dari FeO. Komponen lain tidak diubah. Klik "Kembali ke sampel sebelumnya" untuk mengembalikan.';
+  save();buildInputs();render();};
+$('prv').onclick=()=>{if(!st.prev)return;st.c=st.prev;st.prev=null;$('pinfo').textContent='Komposisi dikembalikan ke sampel sebelum normalisasi.';save();buildInputs();render();};
+$('clr').onclick=()=>{st.prev=null;COMP.forEach(([k])=>st.c[k]='');save();buildInputs();render();$('pinfo').textContent='Semua angka dikosongkan. Tempel data dari Excel atau isi manual.';};
 function ter(){const m=nv(st.c['MgO']),f=nv(st.c['FeO aktual']),s=nv(st.c['SiO2']),t=m+f+s;return t>0?{m:m/t*100,f:f/t*100,s:s/t*100,raw:[m,f,s],t}:null;}
 const F=(v,d=1)=>Number(v).toFixed(d);
 /* ===== UI ===== */
@@ -234,6 +241,9 @@ function render(upd=true){
   <tr><td><b>SiO₂/MgO (Si/Mg)</b></td><td class="n"><b>${t.m>0?F(t.s/t.m,2):'-'}</b></td><td class="n"><b>${t.m>0?F(t.s/t.m,2):'-'}</b></td></tr>`:'';
   const tot=COMP.filter(([k])=>k!=='Fe elemental').reduce((a,[k])=>a+nv(st.c[k]),0),df=tot-100;
   $('tot').innerHTML=`<b>Total komposisi: ${F(tot,2)}%</b> (Fe elemental tidak dihitung, sudah diwakili FeO) &mdash; `+(Math.abs(df)<=0.5?`<span class="ok"><b>sudah ≈100%</b></span>`:`<span class="bad"><b>belum 100%</b>, ${df<0?'kurang':'lebih'} ${F(Math.abs(df),2)}%</span>`+(df<0?' (sisa bisa berupa S, Cr₂O₃, LOI, atau komponen tak terukur)':' (cek kembali input, mungkin ada hitung ganda)'));
+  $('prv').disabled=!st.prev;
+  const ts=nv(st.c['MgO'])+nv(st.c['FeO aktual'])+nv(st.c['SiO2']);
+  if(t&&Math.abs(ts-100)<0.02)$('tot').innerHTML='<b>MgO + FeO + SiO₂ = 100,00%</b> &mdash; <span class="ok"><b>basis terner sudah ternormalisasi</b></span>. Komponen minor (Ni, Co, CaO, Al₂O₃, MnO, Cr) tidak dimasukkan ke total ini.';
   draw();
   if(!t){fillSens(null);drawChart();$('res').innerHTML='<h2>Hasil</h2><p class="bad">Isi MgO, FeO aktual, dan SiO₂ lebih dari 0 untuk memulai analisis.</p>';LAST=null;return;}
   const a=analyze(t.m,t.f,t.s,st.T),od=olivineDist(t.m,t.f,t.s);
@@ -257,9 +267,10 @@ const CHC={0:'#ffc000',5:'#c00000',10:'#0070c0',15:'#38571f',20:'#7030a0',25:'#7
 function tlRF(f,r){const m=(100-f)/(1+r);return primary(m,f,r*m).TL;}
 function mk(g,sh,x,y,c){g.fillStyle=c;g.beginPath();if(sh==='d'){g.moveTo(x,y-5);g.lineTo(x+5,y);g.lineTo(x,y+5);g.lineTo(x-5,y);}else if(sh==='t'){g.moveTo(x,y-5);g.lineTo(x+5,y+4);g.lineTo(x-5,y+4);}else g.rect(x-4,y-4,8,8);g.closePath();g.fill();g.strokeStyle='#fff';g.lineWidth=1;g.stroke();}
 const vis=k=>!st.vis||st.vis[k]!==false;
+function slagLabel(){const t=ter();return t?`FeO slag Anda (${F(t.f,1)}% basis terner; input ${F(nv(st.c['FeO aktual']),1)}%)`:'FeO slag Anda';}
 function drawChart(){
   const c=$('cv2'),g=c.getContext('2d'),Wc=c.width,Hc=c.height,L=70,R=20,Tp=18,B=56,t=ter();
-  const rs=t&&t.m>0?t.s/t.m:null,slag=t?primary(t.m,t.f,t.s).TL:null;
+  const rs=t&&t.m>0?t.s/t.m:null,slag=t?primary(t.m,t.f,t.s).TL:null;const se=document.getElementById('slagtxt');if(se)se.textContent=slagLabel();
   let x0=1,x1=3,y0=1350,y1=1850;
   if(rs){x0=Math.min(x0,Math.floor((rs-.1)*10)/10);x1=Math.max(x1,Math.ceil((rs+.1)*10)/10);}
   if(slag){y0=Math.min(y0,Math.floor(slag/50)*50);y1=Math.max(y1,Math.ceil(slag/50)*50);}
@@ -295,8 +306,8 @@ function fillSens(t){
   return rows;
 }
 function buildLegend(){
-  const it=[...Object.keys(CHC).map(k=>[k,CHC[k],'FeO '+k+'%']),['slag','#d6401f','FeO slag Anda'],...REF.map((q,i)=>['r'+i,q.c,q.n])];
-  $('lg2').innerHTML=it.map(([k,c,n])=>`<label style="cursor:pointer"><input type="checkbox" data-v="${k}" ${vis(k)?'checked':''}> <i style="background:${c}"></i>${n}</label>`).join('');
+  const it=[...Object.keys(CHC).map(k=>[k,CHC[k],'FeO '+k+'%']),['slag','#d6401f',slagLabel()],...REF.map((q,i)=>['r'+i,q.c,q.n])];
+  $('lg2').innerHTML=it.map(([k,c,n])=>`<label style="cursor:pointer"><input type="checkbox" data-v="${k}" ${vis(k)?'checked':''}> <i style="background:${c}"></i>${k==='slag'?'<span id="slagtxt">'+n+'</span>':n}</label>`).join('');
   $('lg2').querySelectorAll('input').forEach(i=>i.onchange=()=>{st.vis=st.vis||{};st.vis[i.dataset.v]=i.checked;save();drawChart();});
 }
 const setAll=on=>{st.vis={};[...Object.keys(CHC),'slag','r0','r1','r2'].forEach(k=>st.vis[k]=on);save();buildLegend();drawChart();};
@@ -306,7 +317,7 @@ $('bpng2').onclick=()=>dl(composePNG({chart:true}),'liquidus_vs_SiMg.png');
 /* ===== EKSPOR ===== */
 const fname=()=>'slag_'+st.T+'C';
 const dl=(c,n)=>{const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=n;a.click();};
-function legendItems(){return [...Object.keys(CHC).filter(vis).map(k=>[CHC[k],'FeO '+k+'%']),...(vis('slag')?[['#d6401f','FeO slag Anda']]:[]),...REF.map((q,i)=>[q.c,q.n,i]).filter(q=>vis('r'+q[2])).map(q=>[q[0],q[1]])];}
+function legendItems(){return [...Object.keys(CHC).filter(vis).map(k=>[CHC[k],'FeO '+k+'%']),...(vis('slag')?[['#d6401f',slagLabel()]]:[]),...REF.map((q,i)=>[q.c,q.n,i]).filter(q=>vis('r'+q[2])).map(q=>[q[0],q[1]])];}
 function composePNG(o){
   const Wd=760,P=14,blocks=[],mc=document.createElement('canvas').getContext('2d');
   const wrap=(txt,font,mw)=>{mc.font=font;let l='';const out=[];txt.split(' ').forEach(x=>{const tt=l?l+' '+x:x;if(mc.measureText(tt).width>mw&&l){out.push(l);l=x;}else l=tt;});if(l)out.push(l);return out;};
