@@ -75,11 +75,28 @@ canvas{width:100%;max-width:700px;height:auto;display:block;margin:auto;border-r
 .tile b{font-size:22px;font-variant-numeric:tabular-nums;color:#fff}
 .tile small{font-size:12px;color:var(--mut);font-weight:400}
 .tile.tok b{color:var(--ok)}.tile.tbad b{color:var(--bad)}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:12px 0 6px}
+.cnt{font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut)}
+.cnt b{color:var(--ac);font-size:15px}
+.seg{display:inline-flex;border:1px solid var(--ln);border-radius:999px;overflow:hidden;background:rgba(4,10,24,.6)}
+.seg button{border:0;border-radius:0;background:transparent;padding:5px 14px;font-size:12px;color:var(--mut)}
+.seg button+button{border-left:1px solid var(--ln)}
+.seg button:hover:not(:disabled){background:rgba(34,211,238,.14);color:#fff;transform:none;box-shadow:none}
+.lgrp{margin:8px 0}
+.lgt{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mut);margin:0 0 6px 2px}
+.chipset{display:flex;flex-wrap:wrap;gap:8px}
+.cc{position:relative;display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 10px;border-radius:999px;border:1px solid var(--ln);background:rgba(4,10,24,.7);color:#6f86a8;font-size:13px;cursor:pointer;user-select:none;transition:all .2s}
+.cc input{position:absolute;opacity:0;pointer-events:none}
+.cc .sw{width:14px;height:14px;border-radius:50%;background:var(--c);border:2px solid rgba(255,255,255,.5);opacity:.35;transition:all .2s}
+.cc:hover{border-color:var(--c);transform:translateY(-1px)}
+.cc.on{color:#fff;border-color:var(--c);background:linear-gradient(135deg,color-mix(in srgb,var(--c) 22%,transparent),rgba(4,10,24,.75));box-shadow:0 0 16px color-mix(in srgb,var(--c) 40%,transparent)}
+.cc.on .sw{opacity:1;box-shadow:0 0 10px var(--c)}
+.cc:focus-within{outline:2px solid #f2a900;outline-offset:2px}
 </style>
 </head>
 <body>
-<header><h1>Ferronickel Slag Phase Analyzer</h1><div class="chips"><span class="chip">MgO–FeO–SiO₂</span><span class="chip">1100–2000 °C</span><span class="chip">1 atm · wt%</span><span class="chip">Fe²⁺ · atmosfer reduktif</span><span class="chip">kalibrasi FactSage pengguna</span></div></header>
-<details class="warn"><summary>Catatan model dan keterbatasan</summary><div style="margin-top:6px"><b>Model terkalibrasi ke data FactSage Anda, bukan hasil FactSage langsung.</b> Liquidus olivin di-fit ke 57 titik (Facsage_cal.xlsx dan kurva liquidus vs S/M pada FeO 0–30% tanpa Al₂O₃; selisih rata-rata ≈4 °C). Batas olivin/piroksen/silika mengikuti kink dan minimum kurva tersebut; batas monoksida/olivin dari gambar proyeksi FactSage (digitisasi ±1–2 wt%). Di antara garis data nilai adalah interpolasi. Al₂O₃ sekitar 5% pada slag Anda dapat menurunkan liquidus sekitar 10–50 °C di sisi olivin (selisih data Excel ber-Al₂O₃ vs tanpa Al₂O₃); CaO, MnO, Cr belum dihitung.</div></details>
+<header><h1>Ferronickel Slag Phase Analyzer</h1><div class="chips"><span class="chip">MgO–FeO–SiO₂</span><span class="chip">1100–2000 °C</span><span class="chip">1 atm · wt%</span><span class="chip">Fe²⁺ · atmosfer reduktif</span></div></header>
+<details class="warn"><summary>Catatan model</summary><div style="margin-top:6px">Model pendekatan sistem MgO–FeO–SiO₂; Al₂O₃, CaO, MnO, dan Cr belum dihitung. Gunakan untuk gambaran tren dan jarak ke medan olivin. Nilai di antara data referensi adalah interpolasi dan dapat bergeser puluhan °C. Al₂O₃ sekitar 5% dapat menurunkan liquidus sekitar 10–50 °C di sisi olivin.</div></details>
 <main>
 <div>
 <div class="pn"><h2>Komposisi slag (wt%)</h2>
@@ -115,9 +132,9 @@ canvas{width:100%;max-width:700px;height:auto;display:block;margin:auto;border-r
 <li>Arahkan kursor untuk melihat komposisi dan fasa di titik mana pun. Klik atau seret untuk memindahkan titik; tombol “Kembali ke sampel sebelumnya” memulihkan sampel asli.</li></ul></details></div>
 <div class="pn"><h2>Grafik temperatur leleh (liquidus) vs SiO₂/MgO</h2>
 <canvas id="cv2" width="760" height="470"></canvas>
-<div class="tb"><button id="vall">Tampilkan semua</button><button id="vnone">Sembunyikan semua</button></div>
-<div class="lg" id="lg2"></div>
-<p class="src">Centang kurva yang ingin ditampilkan (pilihan tersimpan). Garis berwarna: liquidus model pada FeO 0–30%. Garis merah putus-putus: FeO slag Anda pada basis terner (FeO ÷ (MgO+FeO+SiO₂)), sehingga lebih tinggi dari input bila total terner kurang dari 100%; titik merah: slag Anda. Penanda: data langsung dari Facsage_cal.xlsx. Garis biru putus-putus: suhu operasi terpilih. Di bawah liquidus slag mulai mengkristal.</p>
+<div class="ctl"><span class="cnt" id="vcnt"></span><div class="seg"><button id="vall">Semua</button><button id="vslag">Hanya slag Anda</button><button id="vnone">Kosongkan</button></div></div>
+<div id="lg2"></div>
+<p class="src">Ketuk chip warna di bawah grafik untuk menampilkan atau menyembunyikan kurva (pilihan tersimpan). Garis berwarna: liquidus model pada FeO 0–30%. Garis merah putus-putus: FeO slag Anda pada basis terner (FeO ÷ (MgO+FeO+SiO₂)), sehingga lebih tinggi dari input bila total terner kurang dari 100%; titik merah: slag Anda. Penanda: data referensi. Garis biru putus-putus: suhu operasi terpilih. Di bawah liquidus slag mulai mengkristal.</p>
 <div class="tb"><button class="pri" id="bpng2">PNG grafik</button></div></div>
 <div class="pn res" id="res"></div>
 <div class="pn"><h2>Sensitivitas komposisi terhadap liquidus</h2><table id="sens"></table>
@@ -279,7 +296,7 @@ function buildBG(){
   const side=(m,f,s,nx,ny,ang,txt,col)=>{const q=c2px(m,f,s);g.save();g.translate(q.x+nx*46,q.y+ny*46);g.rotate(ang);g.fillStyle=col;g.textAlign='center';g.fillText(txt,0,0);g.restore();};
   side(50,0,50,-.866,-.5,-Math.PI/3,'← MgO wt%',AXC.m);side(0,22,78,.866,-.5,Math.PI/3,'SiO₂ wt% ←',AXC.s);
   g.fillStyle=AXC.f;g.textAlign='center';g.fillText('FeO wt% →',(A.x+B.x)/2,A.y+54);
-  g.textAlign='left';g.fillStyle='#17262f';g.font='bold 14px Segoe UI,Arial';g.fillText('Suhu terpilih: '+F(T,0)+' °C  (kalibrasi FactSage pengguna)',AX-30,24);
+  g.textAlign='left';g.fillStyle='#17262f';g.font='bold 14px Segoe UI,Arial';g.fillText('Suhu terpilih: '+F(T,0)+' °C',AX-30,24);
   BGT=T;
 }
 function tagBox(g,x,y,txt,col,al){g.font='bold 11px Segoe UI,Arial';const w=g.measureText(txt).width+12,h=18,x0=al==='r'?x:al==='l'?x-w:x-w/2;
@@ -356,7 +373,7 @@ function render(upd=true){
   </div>
   <p><span class="k">Fasa primer saat pendinginan:</span> ${PH[a.primary].n} &nbsp; <span class="k">Fasa kedua:</span> ${PH[a.sec].n}</p>
   <p><b>Posisi terhadap olivin:</b> ${oliv}</p>
-  <p class="src">Sumber: kalibrasi ke data FactSage pengguna (Facsage_cal.xlsx, grafik liquidus vs S/M, gambar proyeksi) · sistem MgO–FeO–SiO₂ · 1 atm · kondisi reduktif (referensi kesetimbangan Fe metal) · basis wt% ternary ternormalisasi · akurasi menengah di dekat garis data, lebih rendah di tempat lain. Fraksi padat dihitung dari interpolasi liquidus–solidus, bukan kalkulasi kesetimbangan. Risiko kristalisasi berlebih (viskositas naik, akresi, tersumbatnya launder) perlu dinilai terhadap batasan proses, bukan hanya dari suhu.</p>`;
+  <p class="src">Model pendekatan · sistem MgO–FeO–SiO₂ · 1 atm · kondisi reduktif (referensi kesetimbangan Fe metal) · basis wt% ternary ternormalisasi · akurasi menengah di dekat garis data, lebih rendah di tempat lain. Fraksi padat dihitung dari interpolasi liquidus–solidus, bukan kalkulasi kesetimbangan. Risiko kristalisasi berlebih (viskositas naik, akresi, tersumbatnya launder) perlu dinilai terhadap batasan proses, bukan hanya dari suhu.</p>`;
   $('scn').innerHTML='<tr><th>Suhu (°C)</th><th>Asemblase</th><th class="n">Cair (%)</th><th class="n">Olivin (%)</th></tr>'+PRE.map(T=>{const r=analyze(t.m,t.f,t.s,T);return `<tr><td>${T}</td><td>${r.asm}</td><td class="n">${F(r.fl*100,0)}</td><td class="n">${F(r.olf*100,0)}</td></tr>`;}).join('');
 }
 
@@ -405,12 +422,17 @@ function fillSens(t){
   return rows;
 }
 function buildLegend(){
-  const it=[...Object.keys(CHC).map(k=>[k,CHC[k],'FeO '+k+'%']),['slag','#d6401f',slagLabel()],...REF.map((q,i)=>['r'+i,q.c,q.n])];
-  $('lg2').innerHTML=it.map(([k,c,n])=>`<label style="cursor:pointer"><input type="checkbox" data-v="${k}" ${vis(k)?'checked':''}> <i style="background:${c}"></i>${k==='slag'?'<span id="slagtxt">'+n+'</span>':n}</label>`).join('');
-  $('lg2').querySelectorAll('input').forEach(i=>i.onchange=()=>{st.vis=st.vis||{};st.vis[i.dataset.v]=i.checked;save();drawChart();});
+  const chip=(k,c,n)=>`<label class="cc ${vis(k)?'on':''}" style="--c:${c}"><input type="checkbox" data-v="${k}" ${vis(k)?'checked':''}><span class="sw"></span><span class="tx"${k==='slag'?' id="slagtxt"':''}>${n}</span></label>`;
+  $('lg2').innerHTML=`<div class="lgrp"><div class="lgt">Kurva FeO (model)</div><div class="chipset">${Object.keys(CHC).map(k=>chip(k,CHC[k],'FeO '+k+'%')).join('')}</div></div>
+  <div class="lgrp"><div class="lgt">Slag Anda</div><div class="chipset">${chip('slag','#f43f9e',slagLabel())}</div></div>
+  <div class="lgrp"><div class="lgt">Data referensi (titik)</div><div class="chipset">${REF.map((q,i)=>chip('r'+i,q.c,q.n)).join('')}</div></div>`;
+  $('lg2').querySelectorAll('input').forEach(i=>i.onchange=()=>{st.vis=st.vis||{};st.vis[i.dataset.v]=i.checked;i.parentNode.classList.toggle('on',i.checked);save();cntVis();drawChart();});
+  cntVis();
 }
-const setAll=on=>{st.vis={};[...Object.keys(CHC),'slag','r0','r1','r2'].forEach(k=>st.vis[k]=on);save();buildLegend();drawChart();};
-$('vall').onclick=()=>setAll(true);$('vnone').onclick=()=>setAll(false);
+const ALLK=()=>[...Object.keys(CHC),'slag','r0','r1','r2'];
+function cntVis(){const n=ALLK().filter(vis).length;$('vcnt').innerHTML=`<b>${n}</b> dari ${ALLK().length} kurva tampil`;}
+const setOnly=on=>{st.vis={};ALLK().forEach(k=>st.vis[k]=on(k));save();buildLegend();drawChart();};
+$('vall').onclick=()=>setOnly(()=>true);$('vnone').onclick=()=>setOnly(()=>false);$('vslag').onclick=()=>setOnly(k=>k==='slag');
 buildLegend();
 $('bpng2').onclick=()=>dl(composePNG({chart:true}),'liquidus_vs_SiMg.png');
 /* ===== EKSPOR ===== */
@@ -446,7 +468,7 @@ $('bpdf').onclick=()=>{if(!LAST||!window.jspdf){alert('Data belum lengkap atau p
   L(`Asemblase: ${a.asm.replace('Cair','Cair')}`);L(`Fasa primer: ${PH[a.primary].n} | Liquidus ~${F(a.TL,0)} C | Solidus ~${SOL} C | Superheat ${F(a.sup,0)} C`);
   L(`Fraksi cair ~${F(a.fl*100,0)}%, padat ~${F(a.fs*100,0)}%, olivin ~${F(a.olf*100,0)}%`);
   L(od.inside?'Posisi: di dalam medan olivin.':`Posisi: di luar medan olivin. Jarak terdekat ~${F(od.d,1)} wt%. Tambah MgO ~${od.addMg!=null?F(od.addMg,1):'n/a'} g/100 g atau kurangi SiO2 ~${od.rmSi!=null?F(od.rmSi,1):'n/a'} g/100 g.`);
-  y+=3;L('Catatan: model ilustratif semi-kuantitatif (1 atm, kondisi reduktif, basis wt%), bukan data tervalidasi/FactSage. Deviasi dapat mencapai puluhan hingga >100 C.');
+  y+=3;L('Catatan: model ilustratif semi-kuantitatif (1 atm, kondisi reduktif, basis wt%), bukan data tervalidasi. Deviasi dapat mencapai puluhan hingga >100 C.');
   doc.addPage();doc.setFontSize(13);doc.text('Liquidus vs SiO2/MgO',14,14);doc.addImage($('cv2').toDataURL('image/png'),'PNG',14,20,182,113);
   doc.setFontSize(10);y=142;doc.text('Sensitivitas komposisi (perubahan liquidus, C)',14,y);y+=6;LAST.sens.forEach(r=>{doc.splitTextToSize(`${r.n.replace(/₂/g,'2').replace(/−/g,'-')}: Si/Mg ${F(r.si,2)}, liquidus ${F(r.TL,0)} C, delta ${r.d>0?'+':''}${F(r.d,0)}`,180).forEach(l=>{doc.text(l,14,y);y+=5;});});
   doc.save(fname()+'.pdf');};
